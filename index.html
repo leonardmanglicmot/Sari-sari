@@ -314,10 +314,12 @@
       let productName = "";
       let productPrice = "";
 
+      // 1. Check local catalog first
       if (productCatalog[decodedText]) {
         productName = productCatalog[decodedText].name;
         productPrice = productCatalog[decodedText].price;
       } else {
+        // 2. Query external API if not in local catalog
         try {
           const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${decodedText}.json`);
           const data = await res.json();
@@ -327,9 +329,36 @@
         }
       }
 
-      currentSale.push({ id: Date.now(), name: productName, qty: 1, price: productPrice, barcode: decodedText });
+      // 3. Check if the last row in the list is empty
+      const lastIndex = currentSale.length - 1;
+      const isLastRowEmpty = lastIndex >= 0 && 
+        (!currentSale[lastIndex].name || currentSale[lastIndex].name.trim() === "") && 
+        (!currentSale[lastIndex].price || currentSale[lastIndex].price === "");
+
+      if (isLastRowEmpty) {
+        // Overwrite the empty row
+        currentSale[lastIndex].name = productName;
+        currentSale[lastIndex].price = productPrice;
+        currentSale[lastIndex].barcode = decodedText;
+        currentSale[lastIndex].qty = 1;
+
+        if (productPrice) {
+          db.ref('productCatalog/' + decodedText).set({ name: productName, price: productPrice });
+        }
+      } else {
+        // Append a new row if the last row wasn't empty
+        currentSale.push({
+          id: Date.now(),
+          name: productName,
+          qty: 1,
+          price: productPrice,
+          barcode: decodedText
+        });
+      }
+
       renderSaleTable();
       document.getElementById('scan-status').innerText = `Added: ${productName}`;
+      
       setTimeout(() => { isScanning = false; }, 1500);
     }
 
