@@ -53,7 +53,7 @@
     .btn-danger { background: var(--danger); color: var(--white); }
     .btn-block { width: 100%; margin-top: 10px; }
 
-    .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+    .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
 
     .summary-box { background: var(--primary-light); color: var(--primary-dark); padding: 12px; border-radius: 6px; margin-top: 10px; font-size: 1.1rem; font-weight: bold; border: 1px solid var(--border); }
 
@@ -61,7 +61,7 @@
     .active-collapsible, .collapsible:hover { background-color: #cce0ff; }
     .content { padding: 0 12px; display: none; overflow: hidden; background-color: var(--white); border: 1px solid var(--border); border-top: none; border-radius: 0 0 4px 4px; }
 
-    #reader { width: 100%; max-width: 400px; margin: 0 auto 15px auto; border-radius: 8px; overflow: hidden; }
+    #reader { width: 100%; max-width: 400px; margin: 10px auto 0 auto; border-radius: 8px; overflow: hidden; }
     .scan-status { font-size: 0.85rem; color: var(--primary); margin-top: 5px; text-align: center; }
 
     .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 51, 102, 0.5); z-index: 1000; justify-content: center; align-items: center; }
@@ -79,7 +79,11 @@
     <!-- VIEW 1: TODAY'S SALE -->
     <div id="view-sale" class="view active">
       <div class="card">
-        <button id="scan-toggle-btn" class="btn btn-accent btn-block" onclick="toggleScanner()">📷 Toggle Camera Scanner</button>
+        <!-- Separate Camera Controls -->
+        <div class="action-grid">
+          <button id="open-cam-btn" class="btn btn-accent" onclick="startScanner()">📷 Open Camera</button>
+          <button id="close-cam-btn" class="btn btn-danger" onclick="stopScanner()">🚫 Close Camera</button>
+        </div>
         <div id="reader"></div>
         <div id="scan-status" class="scan-status"></div>
       </div>
@@ -106,7 +110,7 @@
           Total Amount: ₱<span id="grand-total">0.00</span>
         </div>
 
-        <div class="action-grid">
+        <div class="action-grid" style="margin-top: 15px;">
           <button class="btn btn-primary" onclick="openCashModal()">💵 Cash</button>
           <button class="btn btn-accent" onclick="openPayLaterModal()">📝 Pay Later</button>
         </div>
@@ -177,25 +181,22 @@
   </div>
 
   <script>
-    // Embedded Firebase Credentials
+    // --- Firebase Project Configuration ---
     const firebaseConfig = {
-      apiKey: "AIzaSyBARaspKEXCHkfsslbYTb6cRNTaXAJTTYI",
-      authDomain: "sari-4a19c.firebaseapp.com",
-      databaseURL: "https://sari-4a19c-default-rtdb.firebaseio.com",
-      projectId: "sari-4a19c",
-      storageBucket: "sari-4a19c.firebasestorage.app",
-      messagingSenderId: "415675873639",
-      appId: "1:415675873639:web:8ef0228a68f89b8b9857c2",
-      measurementId: "G-DZNNKKT7GN"
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
     };
 
-    // Initialize Firebase Database
     if (!firebase.apps.length) {
       firebase.initializeApp(firebaseConfig);
     }
     const db = firebase.database();
 
-    // Application Variables
     let currentSale = [];
     let payLaterRecords = {};
     let cashHistory = [];
@@ -208,7 +209,6 @@
       listenToCloudData();
     };
 
-    // Real-time Cloud Listeners (Syncs across all devices instantly)
     function listenToCloudData() {
       db.ref('payLaterRecords').on('value', (snapshot) => {
         payLaterRecords = snapshot.val() || {};
@@ -275,19 +275,19 @@
       return total;
     }
 
-    function toggleScanner() {
-      if (html5QrcodeScanner) {
-        stopScanner();
-      } else {
-        document.getElementById('scan-status').innerText = "Starting camera...";
-        html5QrcodeScanner = new Html5Qrcode("reader");
-        html5QrcodeScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScanSuccess)
-          .then(() => { document.getElementById('scan-status').innerText = "Camera active."; })
-          .catch(err => {
-            document.getElementById('scan-status').innerText = "Camera access error.";
-            alert("Camera access error. Make sure you opened this via https link in Chrome/Safari: " + err);
-          });
-      }
+    // --- Explicit Start & Stop Camera Controls ---
+    function startScanner() {
+      if (html5QrcodeScanner) return; // Camera is already open
+
+      document.getElementById('scan-status').innerText = "Starting camera...";
+      html5QrcodeScanner = new Html5Qrcode("reader");
+      html5QrcodeScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScanSuccess)
+        .then(() => { document.getElementById('scan-status').innerText = "Camera active. Point at barcode."; })
+        .catch(err => {
+          document.getElementById('scan-status').innerText = "Camera access error.";
+          alert("Camera access error: " + err);
+          stopScanner();
+        });
     }
 
     function stopScanner() {
@@ -295,8 +295,14 @@
         html5QrcodeScanner.stop().then(() => {
           html5QrcodeScanner = null;
           document.getElementById("reader").innerHTML = "";
-          document.getElementById('scan-status').innerText = "";
+          document.getElementById('scan-status').innerText = "Camera closed.";
+        }).catch(() => {
+          html5QrcodeScanner = null;
+          document.getElementById("reader").innerHTML = "";
+          document.getElementById('scan-status').innerText = "Camera closed.";
         });
+      } else {
+        document.getElementById('scan-status').innerText = "Camera is already closed.";
       }
     }
 
@@ -352,7 +358,6 @@
 
       const transaction = { id: Date.now(), date: new Date().toISOString(), items: [...currentSale], total: total };
       
-      // Save directly to Firebase Realtime Database
       db.ref('cashHistory/' + transaction.id).set(transaction);
 
       currentSale = [];
@@ -388,7 +393,6 @@
         }
       });
 
-      // Save updated record to Firebase Realtime Database
       db.ref('payLaterRecords/' + targetKey).set(payLaterRecords[targetKey]);
 
       currentSale = [];
