@@ -309,17 +309,26 @@
     async function onScanSuccess(decodedText) {
       if (isScanning) return;
       isScanning = true;
+
+      // 1. Check if the item has already been added to the current order
+      const duplicateItem = currentSale.find(item => item.barcode === decodedText);
+      if (duplicateItem) {
+        document.getElementById('scan-status').innerText = `Skipped: "${duplicateItem.name}" is already in order.`;
+        setTimeout(() => { isScanning = false; }, 1500);
+        return;
+      }
+
       document.getElementById('scan-status').innerText = `Scanned: ${decodedText}...`;
 
       let productName = "";
       let productPrice = "";
 
-      // 1. Check local catalog first
+      // 2. Check local catalog first
       if (productCatalog[decodedText]) {
         productName = productCatalog[decodedText].name;
         productPrice = productCatalog[decodedText].price;
       } else {
-        // 2. Query external API if not in local catalog
+        // 3. Query external API if not in local catalog
         try {
           const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${decodedText}.json`);
           const data = await res.json();
@@ -329,7 +338,7 @@
         }
       }
 
-      // 3. Check if the last row in the list is empty
+      // 4. Check if the last row in the list is empty
       const lastIndex = currentSale.length - 1;
       const isLastRowEmpty = lastIndex >= 0 && 
         (!currentSale[lastIndex].name || currentSale[lastIndex].name.trim() === "") && 
