@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sari-Sari Store POS</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    :root {
+      --primary-dark: #003366;    /* Deep Blue */
+      --primary: #0066cc;         /* Standard Blue */
+      --primary-light: #e6f2ff;   /* Soft Light Blue */
+      --accent: #3399ff;          /* Accent Light Blue */
+      --white: #ffffff;
+      --danger: #d9534f;
+      --border: #b3d1ff;
+    }
+
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; }
+    body { background-color: var(--primary-light); color: #1a1a1a; padding-bottom: 70px; }
+
+    header { background-color: var(--primary-dark); color: var(--white); text-align: center; padding: 1rem; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+    
+    .container { max-width: 600px; margin: 0 auto; padding: 15px; }
+
+    .tab-nav { display: flex; position: fixed; bottom: 0; left: 0; right: 0; background: var(--white); border-top: 2px solid var(--border); z-index: 100; }
+    .tab-btn { flex: 1; padding: 12px 5px; text-align: center; border: none; background: none; font-weight: 600; color: var(--primary-dark); cursor: pointer; font-size: 0.85rem; }
+    .tab-btn.active { color: var(--primary); border-top: 4px solid var(--primary); background: var(--primary-light); }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .card { background: var(--white); border-radius: 8px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,51,102,0.08); border: 1px solid var(--border); }
+    
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 8px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+    th { background: var(--primary-light); color: var(--primary-dark); font-weight: 600; }
+
+    input[type="text"], input[type="number"] { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.9rem; background-color: #fafcff; }
+    input[type="text"]:focus, input[type="number"]:focus { outline: none; border-color: var(--primary); }
+
+    .btn { padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+    .btn-primary { background: var(--primary); color: var(--white); }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-accent { background: var(--accent); color: var(--white); }
+    .btn-danger { background: var(--danger); color: var(--white); }
+    .btn-block { width: 100%; margin-top: 10px; }
+
+    .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+
+    .summary-box { background: var(--primary-light); color: var(--primary-dark); padding: 12px; border-radius: 6px; margin-top: 10px; font-size: 1.1rem; font-weight: bold; border: 1px solid var(--border); }
+
+    /* Collapsible PayLater */
+    .collapsible { background-color: var(--primary-light); color: var(--primary-dark); cursor: pointer; padding: 12px; width: 100%; border: 1px solid var(--border); text-align: left; outline: none; font-size: 0.95rem; font-weight: 600; border-radius: 4px; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .active-collapsible, .collapsible:hover { background-color: #cce0ff; }
+    .content { padding: 0 12px; display: none; overflow: hidden; background-color: var(--white); border: 1px solid var(--border); border-top: none; border-radius: 0 0 4px 4px; }
+
+    #reader { width: 100%; max-width: 400px; margin: 0 auto 15px auto; border-radius: 8px; overflow: hidden; }
+    
+    .scan-status { font-size: 0.85rem; color: var(--primary); margin-top: 5px; text-align: center; }
+
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 51, 102, 0.5); z-index: 1000; justify-content: center; align-items: center; }
+    .modal-content { background: var(--white); padding: 20px; border-radius: 8px; width: 90%; max-width: 400px; border: 2px solid var(--primary); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h2>Sari-Sari Store POS</h2>
+  </header>
+
+  <div class="container">
+    
+    <!-- VIEW 1: TODAY'S SALE -->
+    <div id="view-sale" class="view active">
+      <div class="card">
+        <button id="scan-toggle-btn" class="btn btn-accent btn-block" onclick="toggleScanner()">📷 Toggle Camera Scanner</button>
+        <div id="reader"></div>
+        <div id="scan-status" class="scan-status"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="color: var(--primary-dark);">Current Order</h3>
+        <table id="sale-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th style="width: 70px;">Qty</th>
+              <th style="width: 90px;">Price</th>
+              <th style="width: 40px;"></th>
+            </tr>
+          </thead>
+          <tbody id="sale-items">
+            <!-- Dynamic rows -->
+          </tbody>
+        </table>
+
+        <button class="btn btn-primary btn-block" style="margin-top: 15px;" onclick="addManualRow()">+ Add Manual Item</button>
+
+        <div class="summary-box">
+          Total Amount: ₱<span id="grand-total">0.00</span>
+        </div>
+
+        <div class="action-grid">
+          <button class="btn btn-primary" onclick="openCashModal()">💵 Cash</button>
+          <button class="btn btn-accent" onclick="handlePayLater()">📝 Pay Later</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 2: PAY LATER -->
+    <div id="view-paylater" class="view">
+      <div class="card">
+        <h3 style="color: var(--primary-dark);">Pay Later Records (<span id="paylater-count">0</span>/50)</h3>
+        <div id="paylater-list">
+          <!-- Collapsible customer records -->
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 3: DAILY SALES & HISTORY -->
+    <div id="view-history" class="view">
+      <div class="card">
+        <h3 style="color: var(--primary-dark);">Daily Summary</h3>
+        <p style="margin-top: 8px;"><strong>Cash in Store Today:</strong> ₱<span id="daily-cash-total">0.00</span></p>
+      </div>
+
+      <div class="card">
+        <h3 style="color: var(--primary-dark);">Saved Transaction History</h3>
+        <table id="history-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Items</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody id="history-items">
+            <!-- Permanent transaction items -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- NAVIGATION -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" onclick="switchView('view-sale', this)">Today's Sale</button>
+    <button class="tab-btn" onclick="switchView('view-paylater', this)">Pay Later</button>
+    <button class="tab-btn" onclick="switchView('view-history', this)">Sales History</button>
+  </nav>
+
+  <!-- PAY LATER MODAL -->
+  <div id="paylater-modal" class="modal">
+    <div class="modal-content">
+      <h3 style="color: var(--primary-dark);">Pay Later Customer</h3>
+      <p style="margin: 10px 0;">Enter the customer name for this order.</p>
+      <label style="font-size:0.85rem;">Customer Name</label>
+      <input type="text" id="paylater-name-input" placeholder="e.g. Juan Dela Cruz" style="margin-bottom: 10px;">
+      <button class="btn btn-primary btn-block" onclick="submitPayLater()">Save Pay Later</button>
+      <button class="btn btn-danger btn-block" onclick="closePayLaterModal()" style="margin-top: 5px;">Cancel</button>
+    </div>
+  </div>
+
+  <!-- CASH MODAL -->
+  <div id="cash-modal" class="modal">
+    <div class="modal-content">
+      <h3 style="color: var(--primary-dark);">Cash Payment</h3>
+      <p style="margin: 10px 0;">Total Amount Due: <strong>₱<span id="modal-total">0.00</span></strong></p>
+      <label style="font-size:0.85rem;">Amount Tendered (Given):</label>
+      <input type="number" id="amount-given" placeholder="0.00" oninput="calculateChange()" style="margin-bottom: 10px;">
+      <p style="margin-bottom: 15px;">Change: <strong style="color: var(--primary);">₱<span id="modal-change">0.00</span></strong></p>
+      <button class="btn btn-primary btn-block" onclick="completeCashSale()">OK / Finalize Sale</button>
+      <button class="btn btn-danger btn-block" onclick="closeCashModal()" style="margin-top: 5px;">Cancel</button>
+    </div>
+  </div>
+
+  <script>
+    let currentSale = [];
+    let payLaterRecords = normalizePayLaterRecords(JSON.parse(localStorage.getItem('payLaterRecords')) || {});
+    let cashHistory = JSON.parse(localStorage.getItem('cashHistory')) || [];
+    let productCatalog = JSON.parse(localStorage.getItem('productCatalog')) || {};
+    let html5QrcodeScanner = null;
+    let isScanning = false;
+
+    function normalizeName(name) {
+      return String(name || '').trim().toLowerCase();
+    }
+
+    function formatDateTime(date = new Date()) {
+      return date.toLocaleString([], {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+    }
+
+    function normalizePayLaterRecords(rawRecords) {
+      if (!rawRecords || typeof rawRecords !== 'object' || Array.isArray(rawRecords)) {
+        return {};
+      }
+
+      const normalized = {};
+      Object.entries(rawRecords).forEach(([key, value]) => {
+        const normalizedKey = normalizeName(key);
+        if (Array.isArray(value)) {
+          normalized[normalizedKey] = {
+            name: key,
+            items: value.map(item => ({ ...item, date: item.date || formatDateTime() }))
+          };
+        } else if (value && Array.isArray(value.items)) {
+          normalized[normalizedKey] = {
+            name: value.name || key,
+            items: value.items.map(item => ({ ...item, date: item.date || formatDateTime() }))
+          };
+        }
+      });
+
+      return normalized;
+    }
+
+    window.onload = function() {
+      addManualRow();
+      renderPayLater();
+      renderHistory();
+    };
+
+    function switchView(viewId, element) {
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(viewId).classList.add('active');
+      element.classList.add('active');
+      
+      if(viewId !== 'view-sale' && html5QrcodeScanner) {
+        stopScanner();
+      }
+    }
+
+    function addManualRow(name = "", price = "", barcode = "") {
+      currentSale.push({ id: Date.now() + Math.random(), name: name, qty: 1, price: price, barcode: barcode });
+      renderSaleTable();
+    }
+
+    function removeItem(index) {
+      currentSale.splice(index, 1);
+      renderSaleTable();
+    }
+
+    function updateItem(index, field, value) {
+      currentSale[index][field] = field === 'name' ? value : parseFloat(value) || 0;
+      
+      // Save item to custom local catalog if name and price exist
+      const item = currentSale[index];
+      if (item.barcode && item.name && item.price) {
+        productCatalog[item.barcode] = { name: item.name, price: item.price };
+        localStorage.setItem('productCatalog', JSON.stringify(productCatalog));
+      }
+
+      calculateTotal();
+    }
+
+    function renderSaleTable() {
+      const tbody = document.getElementById('sale-items');
+      tbody.innerHTML = '';
+      currentSale.forEach((item, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><input type="text" value="${item.name}" placeholder="Item Name" oninput="updateItem(${index}, 'name', this.value)"></td>
+          <td><input type="number" value="${item.qty}" min="1" oninput="updateItem(${index}, 'qty', this.value)"></td>
+          <td><input type="number" value="${item.price}" placeholder="0.00" step="0.5" oninput="updateItem(${index}, 'price', this.value)"></td>
+          <td><button class="btn btn-danger" onclick="removeItem(${index})">X</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+      calculateTotal();
+    }
+
+    function calculateTotal() {
+      const total = currentSale.reduce((sum, item) => sum + ((item.qty || 0) * (item.price || 0)), 0);
+      document.getElementById('grand-total').innerText = total.toFixed(2);
+      return total;
+    }
+
+    // --- Scanner with Live API Lookup ---
+    function toggleScanner() {
+      if (html5QrcodeScanner) {
+        stopScanner();
+      } else {
+        document.getElementById('scan-status').innerText = "Starting camera...";
+        html5QrcodeScanner = new Html5Qrcode("reader");
+        html5QrcodeScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScanSuccess)
+          .then(() => { document.getElementById('scan-status').innerText = "Camera active. Ready to scan barcode."; })
+          .catch(err => {
+            document.getElementById('scan-status').innerText = "Camera access error.";
+            alert("Camera access error: " + err);
+          });
+      }
+    }
+
+    function stopScanner() {
+      if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().then(() => {
+          html5QrcodeScanner = null;
+          document.getElementById("reader").innerHTML = "";
+          document.getElementById('scan-status').innerText = "";
+        });
+      }
+    }
+
+    async function onScanSuccess(decodedText) {
+      if (isScanning) return; // Prevent double scanning rapid triggers
+      isScanning = true;
+      
+      document.getElementById('scan-status').innerText = `Scanned: ${decodedText}. Looking up...`;
+
+      let productName = "";
+      let productPrice = "";
+
+      // Step 1: Check Local Store Database Memory
+      if (productCatalog[decodedText]) {
+        productName = productCatalog[decodedText].name;
+        productPrice = productCatalog[decodedText].price;
+      } else {
+        // Step 2: Fetch from Open Food Facts API
+        try {
+          const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${decodedText}.json`);
+          const data = await res.json();
+          
+          if (data.status === 1 && data.product) {
+            productName = data.product.product_name_en || data.product.product_name || `Product (${decodedText})`;
+          } else {
+            productName = `Item ${decodedText}`;
+          }
+        } catch (err) {
+          productName = `Item ${decodedText}`;
+        }
+      }
+
+      // Add to sales table
+      currentSale.push({
+        id: Date.now(),
+        name: productName,
+        qty: 1,
+        price: productPrice,
+        barcode: decodedText
+      });
+
+      renderSaleTable();
+      document.getElementById('scan-status').innerText = `Added: ${productName}`;
+
+      setTimeout(() => { isScanning = false; }, 1500);
+    }
+
+    function openCashModal() {
+      const total = calculateTotal();
+      if(total <= 0) return alert("Please add valid items before checking out.");
+      document.getElementById('modal-total').innerText = total.toFixed(2);
+      document.getElementById('amount-given').value = '';
+      document.getElementById('modal-change').innerText = '0.00';
+      document.getElementById('cash-modal').style.display = 'flex';
+    }
+
+    function closeCashModal() {
+      document.getElementById('cash-modal').style.display = 'none';
+    }
+
+    function calculateChange() {
+      const total = calculateTotal();
+      const given = parseFloat(document.getElementById('amount-given').value) || 0;
+      const change = given - total;
+      document.getElementById('modal-change').innerText = change >= 0 ? change.toFixed(2) : "0.00";
+    }
+
+    function completeCashSale() {
+      const total = calculateTotal();
+      const given = parseFloat(document.getElementById('amount-given').value) || 0;
+      if (given < total) return alert("Amount tendered is less than total!");
+
+      const transaction = { id: Date.now(), date: new Date().toISOString(), items: [...currentSale], total: total };
+      cashHistory.push(transaction);
+      localStorage.setItem('cashHistory', JSON.stringify(cashHistory));
+
+      currentSale = [];
+      addManualRow();
+      closeCashModal();
+      renderHistory();
+      alert("Transaction Saved!");
+    }
+
+    function handlePayLater() {
+      const total = calculateTotal();
+      if (total <= 0) return alert("Please add items to register Pay Later.");
+
+      const existingNames = Object.keys(payLaterRecords);
+      if (existingNames.length >= 50) return alert("Pay Later customer limit reached (Max 50).");
+
+      document.getElementById('paylater-name-input').value = '';
+      document.getElementById('paylater-modal').style.display = 'flex';
+      setTimeout(() => document.getElementById('paylater-name-input').focus(), 50);
+    }
+
+    function closePayLaterModal() {
+      document.getElementById('paylater-modal').style.display = 'none';
+    }
+
+    function submitPayLater() {
+      const name = document.getElementById('paylater-name-input').value.trim();
+      if (!name) return alert("Please enter the customer name.");
+
+      const normalizedKey = normalizeName(name);
+      if (!payLaterRecords[normalizedKey]) {
+        payLaterRecords[normalizedKey] = { name: name, items: [] };
+      }
+
+      const entry = payLaterRecords[normalizedKey];
+      entry.name = name;
+
+      const dateStamp = formatDateTime();
+      currentSale.forEach(item => {
+        if (item.name && item.price) {
+          entry.items.push({
+            name: item.name,
+            qty: item.qty,
+            price: item.price,
+            date: dateStamp
+          });
+        }
+      });
+
+      localStorage.setItem('payLaterRecords', JSON.stringify(payLaterRecords));
+      currentSale = [];
+      addManualRow();
+      closePayLaterModal();
+      renderPayLater();
+      alert(`Saved under ${name}`);
+    }
+
+    function renderPayLater() {
+      const container = document.getElementById('paylater-list');
+      container.innerHTML = '';
+      const owners = Object.entries(payLaterRecords);
+      document.getElementById('paylater-count').innerText = owners.length;
+
+      owners.forEach(([key, entry]) => {
+        const items = entry.items || [];
+        const personTotal = items.reduce((sum, item) => sum + (item.qty * item.price), 0);
+        const displayName = entry.name || key;
+
+        const btn = document.createElement('button');
+        btn.className = 'collapsible';
+        btn.innerHTML = `<span>👤 ${displayName}</span> <span>₱${personTotal.toFixed(2)}</span>`;
+
+        const content = document.createElement('div');
+        content.className = 'content';
+
+        let itemsHtml = `
+          <table>
+            <thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Price</th></tr></thead>
+            <tbody>
+        `;
+        items.forEach(i => {
+          itemsHtml += `<tr><td>${i.date || formatDateTime()}</td><td>${i.name}</td><td>${i.qty}</td><td>₱${(i.price * i.qty).toFixed(2)}</td></tr>`;
+        });
+        itemsHtml += `
+            </tbody>
+          </table>
+          <button class="btn btn-danger btn-block" style="margin: 10px 0;" onclick="removePayLaterOwner('${key}')">Clear / Remove Owner</button>
+        `;
+
+        content.innerHTML = itemsHtml;
+        btn.addEventListener('click', function() {
+          this.classList.toggle('active-collapsible');
+          content.style.display = content.style.display === "block" ? "none" : "block";
+        });
+
+        container.appendChild(btn);
+        container.appendChild(content);
+      });
+    }
+
+    function removePayLaterOwner(key) {
+      const ownerName = payLaterRecords[key]?.name || key;
+      if (confirm(`Are you sure you want to remove ${ownerName} and clear all records?`)) {
+        delete payLaterRecords[key];
+        localStorage.setItem('payLaterRecords', JSON.stringify(payLaterRecords));
+        renderPayLater();
+      }
+    }
+
+    function renderHistory() {
+      const historyTbody = document.getElementById('history-items');
+      historyTbody.innerHTML = '';
+
+      let todaysCashTotal = 0;
+      const todayString = new Date().toDateString();
+
+      cashHistory.forEach(record => {
+        const recordDate = new Date(record.date);
+        if (recordDate.toDateString() === todayString) todaysCashTotal += record.total;
+
+        const tr = document.createElement('tr');
+        const itemSummary = record.items.map(i => `${i.name} (${i.qty})`).join(', ');
+        tr.innerHTML = `
+          <td>${recordDate.toLocaleDateString()}</td>
+          <td>${itemSummary}</td>
+          <td>₱${record.total.toFixed(2)}</td>
+        `;
+        historyTbody.appendChild(tr);
+      });
+
+      document.getElementById('daily-cash-total').innerText = todaysCashTotal.toFixed(2);
+    }
+  </script>
+</body>
+</html>
