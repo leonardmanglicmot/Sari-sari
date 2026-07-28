@@ -207,6 +207,10 @@
     let productCatalog = {};
     let html5QrcodeScanner = null;
     let isScanning = false;
+    
+    // Duplication Prevention Controls
+    let lastScannedBarcode = null;
+    let scanCooldownTimer = null;
 
     window.onload = function() {
       addManualRow();
@@ -312,8 +316,11 @@
     }
 
     async function onScanSuccess(decodedText) {
-      if (isScanning) return;
+      // Ignore identical scans during active cooldown or scanning state
+      if (isScanning || decodedText === lastScannedBarcode) return;
+      
       isScanning = true;
+      lastScannedBarcode = decodedText;
       document.getElementById('scan-status').innerText = `Scanned: ${decodedText}...`;
 
       let productName = "";
@@ -358,7 +365,13 @@
 
       renderSaleTable();
       document.getElementById('scan-status').innerText = `Added: ${productName}`;
-      setTimeout(() => { isScanning = false; }, 1500);
+
+      // Reset scanning state but keep barcode debounce timer (3 seconds)
+      isScanning = false;
+      clearTimeout(scanCooldownTimer);
+      scanCooldownTimer = setTimeout(() => {
+        lastScannedBarcode = null;
+      }, 3000);
     }
 
     function openCashModal() {
@@ -414,7 +427,6 @@
 
       if (!payLaterRecords[targetKey]) payLaterRecords[targetKey] = [];
 
-      // Formatted Date and Time (e.g., 7/29/2026, 2:23 PM)
       const nowFormatted = new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
       
       currentSale.forEach(item => {
@@ -473,7 +485,6 @@
       });
     }
 
-    // Remove a single item from a customer's pay later list
     function removePayLaterItem(customerName, itemIndex) {
       if (confirm("Remove this item from the account?")) {
         payLaterRecords[customerName].splice(itemIndex, 1);
