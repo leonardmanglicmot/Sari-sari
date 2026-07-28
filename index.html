@@ -4,7 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sari-Sari Store POS</title>
+  
+  <!-- Barcode Scanner Library -->
   <script src="https://unpkg.com/html5-qrcode"></script>
+  
+  <!-- Firebase SDKs for Realtime Cloud Data Sync -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
   <style>
     :root {
       --primary-dark: #003366;    /* Deep Blue */
@@ -50,13 +57,11 @@
 
     .summary-box { background: var(--primary-light); color: var(--primary-dark); padding: 12px; border-radius: 6px; margin-top: 10px; font-size: 1.1rem; font-weight: bold; border: 1px solid var(--border); }
 
-    /* Collapsible PayLater */
     .collapsible { background-color: var(--primary-light); color: var(--primary-dark); cursor: pointer; padding: 12px; width: 100%; border: 1px solid var(--border); text-align: left; outline: none; font-size: 0.95rem; font-weight: 600; border-radius: 4px; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
     .active-collapsible, .collapsible:hover { background-color: #cce0ff; }
     .content { padding: 0 12px; display: none; overflow: hidden; background-color: var(--white); border: 1px solid var(--border); border-top: none; border-radius: 0 0 4px 4px; }
 
     #reader { width: 100%; max-width: 400px; margin: 0 auto 15px auto; border-radius: 8px; overflow: hidden; }
-    
     .scan-status { font-size: 0.85rem; color: var(--primary); margin-top: 5px; text-align: center; }
 
     .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 51, 102, 0.5); z-index: 1000; justify-content: center; align-items: center; }
@@ -103,7 +108,7 @@
 
         <div class="action-grid">
           <button class="btn btn-primary" onclick="openCashModal()">💵 Cash</button>
-          <button class="btn btn-accent" onclick="handlePayLater()">📝 Pay Later</button>
+          <button class="btn btn-accent" onclick="openPayLaterModal()">📝 Pay Later</button>
         </div>
       </div>
     </div>
@@ -112,9 +117,7 @@
     <div id="view-paylater" class="view">
       <div class="card">
         <h3 style="color: var(--primary-dark);">Pay Later Records (<span id="paylater-count">0</span>/50)</h3>
-        <div id="paylater-list">
-          <!-- Collapsible customer records -->
-        </div>
+        <div id="paylater-list"></div>
       </div>
     </div>
 
@@ -135,33 +138,18 @@
               <th>Total</th>
             </tr>
           </thead>
-          <tbody id="history-items">
-            <!-- Permanent transaction items -->
-          </tbody>
+          <tbody id="history-items"></tbody>
         </table>
       </div>
     </div>
 
   </div>
 
-  <!-- NAVIGATION -->
   <nav class="tab-nav">
-    <button class="tab-btn active" onclick="switchView('view-sale', this)">Today's Sale</button>
-    <button class="tab-btn" onclick="switchView('view-paylater', this)">Pay Later</button>
-    <button class="tab-btn" onclick="switchView('view-history', this)">Sales History</button>
+    <button id="nav-btn-sale" class="tab-btn active" onclick="switchView('view-sale', this)">Today's Sale</button>
+    <button id="nav-btn-paylater" class="tab-btn" onclick="switchView('view-paylater', this)">Pay Later</button>
+    <button id="nav-btn-history" class="tab-btn" onclick="switchView('view-history', this)">Sales History</button>
   </nav>
-
-  <!-- PAY LATER MODAL -->
-  <div id="paylater-modal" class="modal">
-    <div class="modal-content">
-      <h3 style="color: var(--primary-dark);">Pay Later Customer</h3>
-      <p style="margin: 10px 0;">Enter the customer name for this order.</p>
-      <label style="font-size:0.85rem;">Customer Name</label>
-      <input type="text" id="paylater-name-input" placeholder="e.g. Juan Dela Cruz" style="margin-bottom: 10px;">
-      <button class="btn btn-primary btn-block" onclick="submitPayLater()">Save Pay Later</button>
-      <button class="btn btn-danger btn-block" onclick="closePayLaterModal()" style="margin-top: 5px;">Cancel</button>
-    </div>
-  </div>
 
   <!-- CASH MODAL -->
   <div id="cash-modal" class="modal">
@@ -176,67 +164,74 @@
     </div>
   </div>
 
+  <!-- PAY LATER MODAL -->
+  <div id="paylater-modal" class="modal">
+    <div class="modal-content">
+      <h3 style="color: var(--primary-dark);">Pay Later Registration</h3>
+      <p style="margin: 10px 0;">Total Balance: <strong>₱<span id="paylater-modal-total">0.00</span></strong></p>
+      <label style="font-size:0.85rem; font-weight:600;">Customer Name:</label>
+      <input type="text" id="paylater-customer-name" placeholder="Enter customer's full name" style="margin-top: 5px; margin-bottom: 15px;">
+      <button class="btn btn-primary btn-block" onclick="confirmPayLaterSale()">OK / Save to Pay Later</button>
+      <button class="btn btn-danger btn-block" onclick="closePayLaterModal()" style="margin-top: 5px;">Cancel</button>
+    </div>
+  </div>
+
   <script>
+    // Embedded Firebase Credentials
+    const firebaseConfig = {
+      apiKey: "AIzaSyBARaspKEXCHkfsslbYTb6cRNTaXAJTTYI",
+      authDomain: "sari-4a19c.firebaseapp.com",
+      databaseURL: "https://sari-4a19c-default-rtdb.firebaseio.com",
+      projectId: "sari-4a19c",
+      storageBucket: "sari-4a19c.firebasestorage.app",
+      messagingSenderId: "415675873639",
+      appId: "1:415675873639:web:8ef0228a68f89b8b9857c2",
+      measurementId: "G-DZNNKKT7GN"
+    };
+
+    // Initialize Firebase Database
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
+
+    // Application Variables
     let currentSale = [];
-    let payLaterRecords = normalizePayLaterRecords(JSON.parse(localStorage.getItem('payLaterRecords')) || {});
-    let cashHistory = JSON.parse(localStorage.getItem('cashHistory')) || [];
-    let productCatalog = JSON.parse(localStorage.getItem('productCatalog')) || {};
+    let payLaterRecords = {};
+    let cashHistory = [];
+    let productCatalog = {};
     let html5QrcodeScanner = null;
     let isScanning = false;
 
-    function normalizeName(name) {
-      return String(name || '').trim().toLowerCase();
-    }
-
-    function formatDateTime(date = new Date()) {
-      return date.toLocaleString([], {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit'
-      });
-    }
-
-    function normalizePayLaterRecords(rawRecords) {
-      if (!rawRecords || typeof rawRecords !== 'object' || Array.isArray(rawRecords)) {
-        return {};
-      }
-
-      const normalized = {};
-      Object.entries(rawRecords).forEach(([key, value]) => {
-        const normalizedKey = normalizeName(key);
-        if (Array.isArray(value)) {
-          normalized[normalizedKey] = {
-            name: key,
-            items: value.map(item => ({ ...item, date: item.date || formatDateTime() }))
-          };
-        } else if (value && Array.isArray(value.items)) {
-          normalized[normalizedKey] = {
-            name: value.name || key,
-            items: value.items.map(item => ({ ...item, date: item.date || formatDateTime() }))
-          };
-        }
-      });
-
-      return normalized;
-    }
-
     window.onload = function() {
       addManualRow();
-      renderPayLater();
-      renderHistory();
+      listenToCloudData();
     };
+
+    // Real-time Cloud Listeners (Syncs across all devices instantly)
+    function listenToCloudData() {
+      db.ref('payLaterRecords').on('value', (snapshot) => {
+        payLaterRecords = snapshot.val() || {};
+        renderPayLater();
+      });
+
+      db.ref('cashHistory').on('value', (snapshot) => {
+        const data = snapshot.val() || {};
+        cashHistory = Object.values(data);
+        renderHistory();
+      });
+
+      db.ref('productCatalog').on('value', (snapshot) => {
+        productCatalog = snapshot.val() || {};
+      });
+    }
 
     function switchView(viewId, element) {
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.getElementById(viewId).classList.add('active');
-      element.classList.add('active');
-      
-      if(viewId !== 'view-sale' && html5QrcodeScanner) {
-        stopScanner();
-      }
+      if (element) element.classList.add('active');
+      if(viewId !== 'view-sale' && html5QrcodeScanner) stopScanner();
     }
 
     function addManualRow(name = "", price = "", barcode = "") {
@@ -251,14 +246,10 @@
 
     function updateItem(index, field, value) {
       currentSale[index][field] = field === 'name' ? value : parseFloat(value) || 0;
-      
-      // Save item to custom local catalog if name and price exist
       const item = currentSale[index];
       if (item.barcode && item.name && item.price) {
-        productCatalog[item.barcode] = { name: item.name, price: item.price };
-        localStorage.setItem('productCatalog', JSON.stringify(productCatalog));
+        db.ref('productCatalog/' + item.barcode).set({ name: item.name, price: item.price });
       }
-
       calculateTotal();
     }
 
@@ -284,7 +275,6 @@
       return total;
     }
 
-    // --- Scanner with Live API Lookup ---
     function toggleScanner() {
       if (html5QrcodeScanner) {
         stopScanner();
@@ -292,10 +282,10 @@
         document.getElementById('scan-status').innerText = "Starting camera...";
         html5QrcodeScanner = new Html5Qrcode("reader");
         html5QrcodeScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScanSuccess)
-          .then(() => { document.getElementById('scan-status').innerText = "Camera active. Ready to scan barcode."; })
+          .then(() => { document.getElementById('scan-status').innerText = "Camera active."; })
           .catch(err => {
             document.getElementById('scan-status').innerText = "Camera access error.";
-            alert("Camera access error: " + err);
+            alert("Camera access error. Make sure you opened this via https link in Chrome/Safari: " + err);
           });
       }
     }
@@ -311,61 +301,42 @@
     }
 
     async function onScanSuccess(decodedText) {
-      if (isScanning) return; // Prevent double scanning rapid triggers
+      if (isScanning) return;
       isScanning = true;
-      
-      document.getElementById('scan-status').innerText = `Scanned: ${decodedText}. Looking up...`;
+      document.getElementById('scan-status').innerText = `Scanned: ${decodedText}...`;
 
       let productName = "";
       let productPrice = "";
 
-      // Step 1: Check Local Store Database Memory
       if (productCatalog[decodedText]) {
         productName = productCatalog[decodedText].name;
         productPrice = productCatalog[decodedText].price;
       } else {
-        // Step 2: Fetch from Open Food Facts API
         try {
           const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${decodedText}.json`);
           const data = await res.json();
-          
-          if (data.status === 1 && data.product) {
-            productName = data.product.product_name_en || data.product.product_name || `Product (${decodedText})`;
-          } else {
-            productName = `Item ${decodedText}`;
-          }
+          productName = (data.status === 1 && data.product) ? (data.product.product_name_en || data.product.product_name) : `Item ${decodedText}`;
         } catch (err) {
           productName = `Item ${decodedText}`;
         }
       }
 
-      // Add to sales table
-      currentSale.push({
-        id: Date.now(),
-        name: productName,
-        qty: 1,
-        price: productPrice,
-        barcode: decodedText
-      });
-
+      currentSale.push({ id: Date.now(), name: productName, qty: 1, price: productPrice, barcode: decodedText });
       renderSaleTable();
       document.getElementById('scan-status').innerText = `Added: ${productName}`;
-
       setTimeout(() => { isScanning = false; }, 1500);
     }
 
     function openCashModal() {
       const total = calculateTotal();
-      if(total <= 0) return alert("Please add valid items before checking out.");
+      if(total <= 0) return alert("Please add items first.");
       document.getElementById('modal-total').innerText = total.toFixed(2);
       document.getElementById('amount-given').value = '';
       document.getElementById('modal-change').innerText = '0.00';
       document.getElementById('cash-modal').style.display = 'flex';
     }
 
-    function closeCashModal() {
-      document.getElementById('cash-modal').style.display = 'none';
-    }
+    function closeCashModal() { document.getElementById('cash-modal').style.display = 'none'; }
 
     function calculateChange() {
       const total = calculateTotal();
@@ -380,95 +351,74 @@
       if (given < total) return alert("Amount tendered is less than total!");
 
       const transaction = { id: Date.now(), date: new Date().toISOString(), items: [...currentSale], total: total };
-      cashHistory.push(transaction);
-      localStorage.setItem('cashHistory', JSON.stringify(cashHistory));
+      
+      // Save directly to Firebase Realtime Database
+      db.ref('cashHistory/' + transaction.id).set(transaction);
 
       currentSale = [];
       addManualRow();
       closeCashModal();
-      renderHistory();
-      alert("Transaction Saved!");
+      alert("Transaction Saved & Synced!");
     }
 
-    function handlePayLater() {
+    function openPayLaterModal() {
       const total = calculateTotal();
-      if (total <= 0) return alert("Please add items to register Pay Later.");
-
-      const existingNames = Object.keys(payLaterRecords);
-      if (existingNames.length >= 50) return alert("Pay Later customer limit reached (Max 50).");
-
-      document.getElementById('paylater-name-input').value = '';
+      if(total <= 0) return alert("Please add items first.");
+      document.getElementById('paylater-modal-total').innerText = total.toFixed(2);
+      document.getElementById('paylater-customer-name').value = '';
       document.getElementById('paylater-modal').style.display = 'flex';
-      setTimeout(() => document.getElementById('paylater-name-input').focus(), 50);
     }
 
-    function closePayLaterModal() {
-      document.getElementById('paylater-modal').style.display = 'none';
-    }
+    function closePayLaterModal() { document.getElementById('paylater-modal').style.display = 'none'; }
 
-    function submitPayLater() {
-      const name = document.getElementById('paylater-name-input').value.trim();
-      if (!name) return alert("Please enter the customer name.");
+    function confirmPayLaterSale() {
+      let rawName = document.getElementById('paylater-customer-name').value;
+      if (!rawName || !rawName.trim()) return alert("Please enter name.");
+      rawName = rawName.trim();
 
-      const normalizedKey = normalizeName(name);
-      if (!payLaterRecords[normalizedKey]) {
-        payLaterRecords[normalizedKey] = { name: name, items: [] };
-      }
+      const normalizedInput = rawName.toLowerCase();
+      let targetKey = Object.keys(payLaterRecords).find(key => key.toLowerCase() === normalizedInput) || rawName;
 
-      const entry = payLaterRecords[normalizedKey];
-      entry.name = name;
+      if (!payLaterRecords[targetKey]) payLaterRecords[targetKey] = [];
 
-      const dateStamp = formatDateTime();
+      const todayStr = new Date().toLocaleDateString();
       currentSale.forEach(item => {
-        if (item.name && item.price) {
-          entry.items.push({
-            name: item.name,
-            qty: item.qty,
-            price: item.price,
-            date: dateStamp
-          });
+        if(item.name && item.price) {
+          payLaterRecords[targetKey].push({ name: item.name, qty: item.qty, price: item.price, date: todayStr });
         }
       });
 
-      localStorage.setItem('payLaterRecords', JSON.stringify(payLaterRecords));
+      // Save updated record to Firebase Realtime Database
+      db.ref('payLaterRecords/' + targetKey).set(payLaterRecords[targetKey]);
+
       currentSale = [];
       addManualRow();
       closePayLaterModal();
-      renderPayLater();
-      alert(`Saved under ${name}`);
+      switchView('view-paylater', document.getElementById('nav-btn-paylater'));
     }
 
     function renderPayLater() {
       const container = document.getElementById('paylater-list');
       container.innerHTML = '';
-      const owners = Object.entries(payLaterRecords);
-      document.getElementById('paylater-count').innerText = owners.length;
+      const names = Object.keys(payLaterRecords);
+      document.getElementById('paylater-count').innerText = names.length;
 
-      owners.forEach(([key, entry]) => {
-        const items = entry.items || [];
+      names.forEach(name => {
+        const items = payLaterRecords[name] || [];
         const personTotal = items.reduce((sum, item) => sum + (item.qty * item.price), 0);
-        const displayName = entry.name || key;
 
         const btn = document.createElement('button');
         btn.className = 'collapsible';
-        btn.innerHTML = `<span>👤 ${displayName}</span> <span>₱${personTotal.toFixed(2)}</span>`;
+        btn.innerHTML = `<span>👤 ${name}</span> <span>₱${personTotal.toFixed(2)}</span>`;
 
         const content = document.createElement('div');
         content.className = 'content';
 
-        let itemsHtml = `
-          <table>
-            <thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Price</th></tr></thead>
-            <tbody>
-        `;
+        let itemsHtml = `<table><thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Price</th></tr></thead><tbody>`;
         items.forEach(i => {
-          itemsHtml += `<tr><td>${i.date || formatDateTime()}</td><td>${i.name}</td><td>${i.qty}</td><td>₱${(i.price * i.qty).toFixed(2)}</td></tr>`;
+          itemsHtml += `<tr><td>${i.date}</td><td>${i.name}</td><td>${i.qty}</td><td>₱${(i.price * i.qty).toFixed(2)}</td></tr>`;
         });
-        itemsHtml += `
-            </tbody>
-          </table>
-          <button class="btn btn-danger btn-block" style="margin: 10px 0;" onclick="removePayLaterOwner('${key}')">Clear / Remove Owner</button>
-        `;
+        itemsHtml += `</tbody></table><button class="btn btn-danger btn-block" style="margin: 10px 0;" onclick="removePayLaterOwner('${name}')">Clear / Remove Owner</button>`;
 
         content.innerHTML = itemsHtml;
         btn.addEventListener('click', function() {
@@ -481,19 +431,15 @@
       });
     }
 
-    function removePayLaterOwner(key) {
-      const ownerName = payLaterRecords[key]?.name || key;
-      if (confirm(`Are you sure you want to remove ${ownerName} and clear all records?`)) {
-        delete payLaterRecords[key];
-        localStorage.setItem('payLaterRecords', JSON.stringify(payLaterRecords));
-        renderPayLater();
+    function removePayLaterOwner(name) {
+      if (confirm(`Remove ${name} and clear all records across all devices?`)) {
+        db.ref('payLaterRecords/' + name).remove();
       }
     }
 
     function renderHistory() {
       const historyTbody = document.getElementById('history-items');
       historyTbody.innerHTML = '';
-
       let todaysCashTotal = 0;
       const todayString = new Date().toDateString();
 
@@ -503,11 +449,7 @@
 
         const tr = document.createElement('tr');
         const itemSummary = record.items.map(i => `${i.name} (${i.qty})`).join(', ');
-        tr.innerHTML = `
-          <td>${recordDate.toLocaleDateString()}</td>
-          <td>${itemSummary}</td>
-          <td>₱${record.total.toFixed(2)}</td>
-        `;
+        tr.innerHTML = `<td>${recordDate.toLocaleDateString()}</td><td>${itemSummary}</td><td>₱${record.total.toFixed(2)}</td>`;
         historyTbody.appendChild(tr);
       });
 
