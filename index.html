@@ -40,7 +40,7 @@
     .card { background: var(--white); border-radius: 8px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,51,102,0.08); border: 1px solid var(--border); }
     
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { padding: 8px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+    th, td { padding: 8px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
     th { background: var(--primary-light); color: var(--primary-dark); font-weight: 600; }
 
     input[type="text"], input[type="number"] { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.9rem; background-color: #fafcff; }
@@ -79,7 +79,8 @@
     <!-- VIEW 1: TODAY'S SALE -->
     <div id="view-sale" class="view active">
       <div class="card">
-        <div class="action-grid">
+        <!-- Separate Camera Control Buttons -->
+        <div class="action-grid" style="margin-top: 0;">
           <button id="open-cam-btn" class="btn btn-accent" onclick="startScanner()">📷 Open Camera</button>
           <button id="close-cam-btn" class="btn btn-danger" onclick="stopScanner()">🚫 Close Camera</button>
         </div>
@@ -119,7 +120,7 @@
     <!-- VIEW 2: PAY LATER -->
     <div id="view-paylater" class="view">
       <div class="card">
-        <h3 style="color: var(--primary-dark);">Pay Later Records (<span id="paylater-count">0</span>)</h3>
+        <h3 style="color: var(--primary-dark);">Pay Later Records (<span id="paylater-count">0</span>/50)</h3>
         <div id="paylater-list"></div>
       </div>
     </div>
@@ -132,11 +133,11 @@
       </div>
 
       <div class="card">
-        <h3 style="color: var(--primary-dark);">Saved Transaction History (Last 30 Days)</h3>
+        <h3 style="color: var(--primary-dark);">Saved Transaction History</h3>
         <table id="history-table">
           <thead>
             <tr>
-              <th>Date & Time</th>
+              <th>Date</th>
               <th>Items</th>
               <th>Total</th>
             </tr>
@@ -180,22 +181,25 @@
   </div>
 
   <script>
-    // --- Firebase Project Configuration ---
+    // Embedded Firebase Credentials
     const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT_ID.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
+      apiKey: "AIzaSyBARaspKEXCHkfsslbYTb6cRNTaXAJTTYI",
+      authDomain: "sari-4a19c.firebaseapp.com",
+      databaseURL: "https://sari-4a19c-default-rtdb.firebaseio.com",
+      projectId: "sari-4a19c",
+      storageBucket: "sari-4a19c.firebasestorage.app",
+      messagingSenderId: "415675873639",
+      appId: "1:415675873639:web:8ef0228a68f89b8b9857c2",
+      measurementId: "G-DZNNKKT7GN"
     };
 
+    // Initialize Firebase Database
     if (!firebase.apps.length) {
       firebase.initializeApp(firebaseConfig);
     }
     const db = firebase.database();
 
+    // Application Variables
     let currentSale = [];
     let payLaterRecords = {};
     let cashHistory = [];
@@ -208,6 +212,7 @@
       listenToCloudData();
     };
 
+    // Real-time Cloud Listeners
     function listenToCloudData() {
       db.ref('payLaterRecords').on('value', (snapshot) => {
         payLaterRecords = snapshot.val() || {};
@@ -217,26 +222,11 @@
       db.ref('cashHistory').on('value', (snapshot) => {
         const data = snapshot.val() || {};
         cashHistory = Object.values(data);
-        cleanOldHistory(data);
         renderHistory();
       });
 
       db.ref('productCatalog').on('value', (snapshot) => {
         productCatalog = snapshot.val() || {};
-      });
-    }
-
-    // Automatically remove cash history records older than 30 days (30 * 24 * 60 * 60 * 1000 ms)
-    function cleanOldHistory(rawData) {
-      const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
-      const now = Date.now();
-
-      Object.keys(rawData).forEach(key => {
-        const record = rawData[key];
-        const recordTime = new Date(record.date).getTime();
-        if (now - recordTime > thirtyDaysInMs) {
-          db.ref('cashHistory/' + key).remove();
-        }
       });
     }
 
@@ -284,14 +274,15 @@
     }
 
     function calculateTotal() {
-      const validItems = currentSale.filter(item => item.name && item.name.trim() !== "" && (parseFloat(item.price) || 0) > 0);
-      const total = validItems.reduce((sum, item) => sum + ((item.qty || 1) * (parseFloat(item.price) || 0)), 0);
+      const total = currentSale.reduce((sum, item) => sum + ((item.qty || 0) * (item.price || 0)), 0);
       document.getElementById('grand-total').innerText = total.toFixed(2);
       return total;
     }
 
+    // --- Separate Open & Close Camera Controls ---
     function startScanner() {
-      if (html5QrcodeScanner) return;
+      if (html5QrcodeScanner) return; // Prevent double instances
+
       document.getElementById('scan-status').innerText = "Starting camera...";
       html5QrcodeScanner = new Html5Qrcode("reader");
       html5QrcodeScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScanSuccess)
@@ -322,19 +313,12 @@
     async function onScanSuccess(decodedText) {
       if (isScanning) return;
       isScanning = true;
-
-      const duplicateItem = currentSale.find(item => item.barcode === decodedText);
-      if (duplicateItem) {
-        document.getElementById('scan-status').innerText = `Skipped: "${duplicateItem.name}" is already in order.`;
-        setTimeout(() => { isScanning = false; }, 1500);
-        return;
-      }
-
       document.getElementById('scan-status').innerText = `Scanned: ${decodedText}...`;
 
       let productName = "";
       let productPrice = "";
 
+      // Check local catalog first
       if (productCatalog[decodedText]) {
         productName = productCatalog[decodedText].name;
         productPrice = productCatalog[decodedText].price;
@@ -348,12 +332,14 @@
         }
       }
 
+      // Check if the last row in currentSale is empty
       const lastIndex = currentSale.length - 1;
       const isLastRowEmpty = lastIndex >= 0 && 
         (!currentSale[lastIndex].name || currentSale[lastIndex].name.trim() === "") && 
         (!currentSale[lastIndex].price || currentSale[lastIndex].price === "");
 
       if (isLastRowEmpty) {
+        // Replace empty row
         currentSale[lastIndex].name = productName;
         currentSale[lastIndex].price = productPrice;
         currentSale[lastIndex].barcode = decodedText;
@@ -363,6 +349,7 @@
           db.ref('productCatalog/' + decodedText).set({ name: productName, price: productPrice });
         }
       } else {
+        // Append a new row if last row was filled
         currentSale.push({
           id: Date.now(),
           name: productName,
@@ -379,7 +366,7 @@
 
     function openCashModal() {
       const total = calculateTotal();
-      if (total <= 0) return alert("Please add valid items with prices first.");
+      if(total <= 0) return alert("Please add items first.");
       document.getElementById('modal-total').innerText = total.toFixed(2);
       document.getElementById('amount-given').value = '';
       document.getElementById('modal-change').innerText = '0.00';
@@ -400,27 +387,19 @@
       const given = parseFloat(document.getElementById('amount-given').value) || 0;
       if (given < total) return alert("Amount tendered is less than total!");
 
-      // Filter out empty rows
-      const itemsToSave = currentSale.filter(item => item.name && item.name.trim() !== "" && parseFloat(item.price) > 0);
-
-      const transaction = { 
-        id: Date.now(), 
-        date: new Date().toISOString(), 
-        items: itemsToSave, 
-        total: total 
-      };
+      const transaction = { id: Date.now(), date: new Date().toISOString(), items: [...currentSale], total: total };
       
       db.ref('cashHistory/' + transaction.id).set(transaction);
 
       currentSale = [];
       addManualRow();
       closeCashModal();
-      alert("Cash Transaction Saved & Synced!");
+      alert("Transaction Saved & Synced!");
     }
 
     function openPayLaterModal() {
       const total = calculateTotal();
-      if (total <= 0) return alert("Please add valid items with prices first.");
+      if(total <= 0) return alert("Please add items first.");
       document.getElementById('paylater-modal-total').innerText = total.toFixed(2);
       document.getElementById('paylater-customer-name').value = '';
       document.getElementById('paylater-modal').style.display = 'flex';
@@ -430,38 +409,22 @@
 
     function confirmPayLaterSale() {
       let rawName = document.getElementById('paylater-customer-name').value;
-      if (!rawName || !rawName.trim()) return alert("Please enter customer name.");
+      if (!rawName || !rawName.trim()) return alert("Please enter name.");
       rawName = rawName.trim();
 
       const normalizedInput = rawName.toLowerCase();
       let targetKey = Object.keys(payLaterRecords).find(key => key.toLowerCase() === normalizedInput) || rawName;
 
-      const existingItems = payLaterRecords[targetKey] || [];
-      const now = new Date();
-      const formattedDate = now.toLocaleDateString();
-      const formattedTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (!payLaterRecords[targetKey]) payLaterRecords[targetKey] = [];
 
-      // Append valid current sale items to customer's Pay Later ledger with time and total
-      const newEntries = [];
+      const todayStr = new Date().toLocaleDateString();
       currentSale.forEach(item => {
-        if (item.name && item.name.trim() !== "" && parseFloat(item.price) > 0) {
-          const qty = parseFloat(item.qty) || 1;
-          const price = parseFloat(item.price) || 0;
-          newEntries.push({
-            name: item.name,
-            qty: qty,
-            price: price,
-            totalPrice: qty * price,
-            date: formattedDate,
-            time: formattedTime
-          });
+        if(item.name && item.price) {
+          payLaterRecords[targetKey].push({ name: item.name, qty: item.qty, price: item.price, date: todayStr });
         }
       });
 
-      if (newEntries.length === 0) return alert("No valid items to save.");
-
-      const updatedRecords = [...existingItems, ...newEntries];
-      db.ref('payLaterRecords/' + targetKey).set(updatedRecords);
+      db.ref('payLaterRecords/' + targetKey).set(payLaterRecords[targetKey]);
 
       currentSale = [];
       addManualRow();
@@ -477,7 +440,7 @@
 
       names.forEach(name => {
         const items = payLaterRecords[name] || [];
-        const personTotal = items.reduce((sum, item) => sum + (item.totalPrice || (item.qty * item.price)), 0);
+        const personTotal = items.reduce((sum, item) => sum + (item.qty * item.price), 0);
 
         const btn = document.createElement('button');
         btn.className = 'collapsible';
@@ -486,37 +449,11 @@
         const content = document.createElement('div');
         content.className = 'content';
 
-        let itemsHtml = `
-          <table>
-            <thead>
-              <tr>
-                <th>Date & Time</th>
-                <th>Item</th>
-                <th>Qty</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>`;
-        
+        let itemsHtml = `<table><thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Price</th></tr></thead><tbody>`;
         items.forEach(i => {
-          const timeStr = i.time ? ` ${i.time}` : '';
-          const lineTotal = i.totalPrice || (i.price * i.qty);
-          itemsHtml += `
-            <tr>
-              <td>${i.date}${timeStr}</td>
-              <td>${i.name}</td>
-              <td>${i.qty}</td>
-              <td>₱${lineTotal.toFixed(2)}</td>
-            </tr>`;
+          itemsHtml += `<tr><td>${i.date}</td><td>${i.name}</td><td>${i.qty}</td><td>₱${(i.price * i.qty).toFixed(2)}</td></tr>`;
         });
-
-        itemsHtml += `
-            </tbody>
-          </table>
-          <div style="margin: 10px 0; font-weight: bold; color: var(--primary-dark);">
-            Overall Unpaid Balance: ₱${personTotal.toFixed(2)}
-          </div>
-          <button class="btn btn-danger btn-block" style="margin-bottom: 10px;" onclick="removePayLaterOwner('${name}')">Clear / Remove Owner</button>`;
+        itemsHtml += `</tbody></table><button class="btn btn-danger btn-block" style="margin: 10px 0;" onclick="removePayLaterOwner('${name}')">Clear / Remove Owner</button>`;
 
         content.innerHTML = itemsHtml;
         btn.addEventListener('click', function() {
@@ -530,7 +467,7 @@
     }
 
     function removePayLaterOwner(name) {
-      if (confirm(`Remove ${name} and clear all recorded purchases?`)) {
+      if (confirm(`Remove ${name} and clear all records across all devices?`)) {
         db.ref('payLaterRecords/' + name).remove();
       }
     }
@@ -541,18 +478,13 @@
       let todaysCashTotal = 0;
       const todayString = new Date().toDateString();
 
-      // Sort history from newest to oldest
-      cashHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
-
       cashHistory.forEach(record => {
         const recordDate = new Date(record.date);
         if (recordDate.toDateString() === todayString) todaysCashTotal += record.total;
 
         const tr = document.createElement('tr');
-        const itemSummary = record.items ? record.items.map(i => `${i.name} (${i.qty})`).join(', ') : 'No items';
-        const formattedDateStr = `${recordDate.toLocaleDateString()} ${recordDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-
-        tr.innerHTML = `<td>${formattedDateStr}</td><td>${itemSummary}</td><td>₱${record.total.toFixed(2)}</td>`;
+        const itemSummary = record.items.map(i => `${i.name} (${i.qty})`).join(', ');
+        tr.innerHTML = `<td>${recordDate.toLocaleDateString()}</td><td>${itemSummary}</td><td>₱${record.total.toFixed(2)}</td>`;
         historyTbody.appendChild(tr);
       });
 
